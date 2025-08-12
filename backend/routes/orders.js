@@ -4,90 +4,19 @@ const Book = require('../models/Book');
 const User = require('../models/User');
 const router = express.Router();
 
-// POST /api/orders - Create new order
-router.post('/', async (req, res) => {
+// GET /api/orders/user/:clerkId - Get orders for buyer by Clerk ID
+router.get('/user/:clerkId', async (req, res) => {
   try {
-    const {
-      buyerId,
-      items, // [{ bookId, quantity }]
-      deliveryAddress
-    } = req.body;
-
-    // Get buyer
-    const buyer = await User.findById(buyerId);
-    if (!buyer) {
+    const user = await User.findOne({ clerkId: req.params.clerkId });
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Buyer not found'
+        message: 'User not found'
       });
     }
 
-    // Process items and calculate total
-    let totalAmount = 0;
-    const orderItems = [];
-
-    for (const item of items) {
-      const book = await Book.findById(item.bookId);
-      if (!book || !book.available) {
-        return res.status(400).json({
-          success: false,
-          message: `Book ${book ? book.title : 'unknown'} is not available`
-        });
-      }
-
-      const itemTotal = book.price * item.quantity;
-      totalAmount += itemTotal;
-
-      orderItems.push({
-        book: book._id,
-        quantity: item.quantity,
-        price: book.price
-      });
-
-      // Mark book as unavailable
-      book.available = false;
-      await book.save();
-    }
-
-    // Set delivery location
-    let deliveryLocation = buyer.location;
-    if (deliveryAddress && deliveryAddress.coordinates) {
-      deliveryLocation = {
-        type: 'Point',
-        coordinates: deliveryAddress.coordinates
-      };
-    }
-
-    const order = new Order({
-      buyer: buyerId,
-      items: orderItems,
-      totalAmount,
-      deliveryAddress: deliveryAddress || buyer.address,
-      deliveryLocation,
-      status: 'Pending'
-    });
-
-    await order.save();
-    await order.populate(['buyer', 'items.book']);
-
-    res.status(201).json({
-      success: true,
-      data: order
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: 'Error creating order',
-      error: error.message
-    });
-  }
-});
-
-// GET /api/orders/buyer/:buyerId - Get orders for buyer
-router.get('/buyer/:buyerId', async (req, res) => {
-  try {
-    const orders = await Order.find({ buyer: req.params.buyerId })
-      .populate(['buyer', 'items.book'])
+    const orders = await Order.find({ buyer: user._id })
+      .populate(['buyer', 'seller', 'items.book'])
       .sort({ createdAt: -1 });
 
     res.json({
@@ -98,25 +27,26 @@ router.get('/buyer/:buyerId', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error fetching orders',
+      message: 'Error fetching user orders',
       error: error.message
     });
   }
 });
 
-// GET /api/orders/seller/:sellerId - Get orders for books sold by seller
-router.get('/seller/:sellerId', async (req, res) => {
+// GET /api/orders/seller/:clerkId - Get orders for seller by Clerk ID
+router.get('/seller/:clerkId', async (req, res) => {
   try {
-    // Find all books by this seller
-    const sellerBooks = await Book.find({ seller: req.params.sellerId });
-    const bookIds = sellerBooks.map(book => book._id);
+    const seller = await User.findOne({ clerkId: req.params.clerkId });
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found'
+      });
+    }
 
-    // Find orders containing these books
-    const orders = await Order.find({
-      'items.book': { $in: bookIds }
-    })
-    .populate(['buyer', 'items.book'])
-    .sort({ createdAt: -1 });
+    const orders = await Order.find({ seller: seller._id })
+      .populate(['buyer', 'seller', 'items.book'])
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -132,10 +62,36 @@ router.get('/seller/:sellerId', async (req, res) => {
   }
 });
 
+// GET /api/orders/:id - Get specific order
+router.get('/:id', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate(['buyer', 'seller', 'items.book']);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching order',
+      error: error.message
+    });
+  }
+});
+
 // PUT /api/orders/:id/status - Update order status
 router.put('/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, message, location, coordinates, updatedByClerkId } = req.body;
     
     const order = await Order.findById(req.params.id);
     if (!order) {
@@ -145,9 +101,32 @@ router.put('/:id/status', async (req, res) => {
       });
     }
 
-    order.status = status;
+    const updater = await User.findOne({ clerkId: updatedByClerkId });
+    if (!updater) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Add tracking update
+    order.trackingUpdates.push({
+      status,
+      message: message || `Order status updated to ${status}`,
+      location: location || '',
+      coordinates: coordinates || [0, 0],
+      updatedBy: updater._id,
+      timestamp: new Date()
+    });
+
+    order.status = status.toLowerCase().replace(/\s+/g, '_');
+    
+    if (order.status === 'delivered') {
+      order.actualDelivery = new Date();
+    }
+
     await order.save();
-    await order.populate(['buyer', 'items.book']);
+    await order.populate(['buyer', 'seller', 'items.book']);
 
     res.json({
       success: true,
@@ -157,6 +136,53 @@ router.put('/:id/status', async (req, res) => {
     res.status(400).json({
       success: false,
       message: 'Error updating order status',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/orders/:id/tracking - Add tracking update
+router.post('/:id/tracking', async (req, res) => {
+  try {
+    const { status, message, location, coordinates, updatedByClerkId } = req.body;
+    
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    const updater = await User.findOne({ clerkId: updatedByClerkId });
+    if (!updater) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    order.trackingUpdates.push({
+      status,
+      message,
+      location,
+      coordinates,
+      updatedBy: updater._id,
+      timestamp: new Date()
+    });
+
+    await order.save();
+    await order.populate(['buyer', 'seller', 'items.book']);
+
+    res.json({
+      success: true,
+      message: 'Tracking update added successfully',
+      data: order
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: 'Error adding tracking update',
       error: error.message
     });
   }
