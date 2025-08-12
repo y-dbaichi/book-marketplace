@@ -19,6 +19,7 @@ app.use('/api/books', booksRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/checkout', checkoutRoutes);
+app.use('/api/clerk', clerkWebhookRoutes);
 
 app.get('/', (req, res) => {
   res.json({ 
