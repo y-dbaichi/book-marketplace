@@ -7,6 +7,7 @@ const booksRoutes = require('./routes/books');
 const usersRoutes = require('./routes/users');
 const ordersRoutes = require('./routes/orders');
 const checkoutRoutes = require('./routes/checkout');
+const clerkWebhookRoutes = require('./routes/clerk-webhook');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
