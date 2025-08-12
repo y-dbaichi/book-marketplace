@@ -1,13 +1,25 @@
 {
   "name": "book-marketplace",
   "version": "1.0.0",
-  "description": "",
+  "description": "A local marketplace for buying and selling books",
   "main": "index.js",
   "scripts": {
+    "dev": "concurrently \"cd backend && npm start\" \"cd frontend && npm start\"",
+    "dev:frontend": "cd frontend && npm start",
+    "dev:backend": "cd backend && npm start",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "books",
+    "marketplace",
+    "react",
+    "node"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
 }
