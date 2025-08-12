@@ -10,7 +10,12 @@
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["books", "marketplace", "react", "node"],
+  "keywords": [
+    "books",
+    "marketplace",
+    "react",
+    "node"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
